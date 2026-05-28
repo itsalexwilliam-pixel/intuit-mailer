@@ -20,3 +20,11 @@
 - [ ] Re-run full test suite until green
 - [ ] Run SMTP rotation and sending-limit deep verification scenarios
 - [ ] Confirm campaign/app throttling behavior under queue processing
+
+# Merge tags fix TODO
+
+- [x] Investigate campaign/single-email placeholder parsing issue from screenshot
+- [ ] Add shared merge-tag resolver supporting multiple token styles + current_date
+- [ ] Wire resolver into CampaignMail, DripMail, and SingleEmailMail
+- [ ] Add/update targeted tests for campaign + single-email merge replacements
+- [ ] Run targeted tests and fix any regressions
