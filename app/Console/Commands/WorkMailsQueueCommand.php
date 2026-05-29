@@ -11,6 +11,7 @@ use App\Models\Unsubscribe;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 
 class WorkMailsQueueCommand extends Command
@@ -293,7 +294,6 @@ class WorkMailsQueueCommand extends Command
         $smtpServers = SmtpServer::forAccount($accountId)
             ->active()
             ->orderBy('priority')
-            ->orderBy('last_used_at')
             ->orderBy('id')
             ->get();
 
@@ -302,11 +302,13 @@ class WorkMailsQueueCommand extends Command
             return false;
         }
 
+        $rotationOrderedServers = $this->applyRoundRobinOrder($smtpServers, $accountId);
+
         $sent = false;
         $lastError = null;
         $today = Carbon::today()->toDateString();
 
-        foreach ($smtpServers as $smtp) {
+        foreach ($rotationOrderedServers as $smtp) {
             if (!is_null($smtp->daily_limit)) {
                 $todaySentCount = SmtpServerUsage::query()
                     ->where('smtp_server_id', $smtp->id)
@@ -368,8 +370,14 @@ class WorkMailsQueueCommand extends Command
 
                 $usage->increment('sent_count');
 
+                $this->advanceRoundRobinPointer($accountId, (int) $smtp->id);
+
                 $this->info("Sent successfully: {$item->email}");
                 $sent = true;
+
+                // Fixed pacing requirement: 10 seconds per email send
+                sleep(10);
+
                 break;
             } catch (\Throwable $e) {
                 $lastError = $e->getMessage();
@@ -414,5 +422,41 @@ class WorkMailsQueueCommand extends Command
         }
 
         return $sent;
+    }
+
+    private function applyRoundRobinOrder(Collection $smtpServers, int $accountId): Collection
+    {
+        $serverIds = $smtpServers->pluck('id')->map(fn ($id) => (int) $id)->values();
+        if ($serverIds->isEmpty()) {
+            return $smtpServers->values();
+        }
+
+        $cacheKey = $this->roundRobinCacheKey($accountId);
+        $lastUsedSmtpId = (int) Cache::get($cacheKey, 0);
+
+        if ($lastUsedSmtpId <= 0 || !$serverIds->contains($lastUsedSmtpId)) {
+            return $smtpServers->values();
+        }
+
+        $lastIndex = $serverIds->search($lastUsedSmtpId);
+        if ($lastIndex === false) {
+            return $smtpServers->values();
+        }
+
+        $startIndex = ((int) $lastIndex + 1) % $smtpServers->count();
+
+        return $smtpServers->slice($startIndex)
+            ->concat($smtpServers->slice(0, $startIndex))
+            ->values();
+    }
+
+    private function advanceRoundRobinPointer(int $accountId, int $smtpId): void
+    {
+        Cache::forever($this->roundRobinCacheKey($accountId), $smtpId);
+    }
+
+    private function roundRobinCacheKey(int $accountId): string
+    {
+        return "smtp_rotation_last_used_account_{$accountId}";
     }
 }

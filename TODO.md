@@ -28,3 +28,11 @@
 - [ ] Wire resolver into CampaignMail, DripMail, and SingleEmailMail
 - [ ] Add/update targeted tests for campaign + single-email merge replacements
 - [ ] Run targeted tests and fix any regressions
+
+# SMTP rotation + pacing TODO
+
+- [x] Inspect and patch `app/Console/Commands/WorkMailsQueueCommand.php` for strict SMTP round-robin sequencing
+- [x] Add persisted per-account rotation pointer so sending cycles 1..N then wraps to 1
+- [x] Enforce 10-second gap between each sent email in worker processing path
+- [x] Keep fallback/retry behavior intact when an SMTP fails or reaches daily limit
+- [ ] Provide EC2 diagnostic commands to verify SMTP id sequence and 10-second pacing
