@@ -252,8 +252,8 @@ class SingleEmailController extends Controller
             ]],
             ['smtp_server_id', 'account_id', 'usage_date'],
             [
-                'sent_count' => DB::raw('sent_count + '.$sentIncrement),
-                'fail_count' => DB::raw('fail_count + '.$failIncrement),
+                'sent_count' => DB::raw('smtp_server_usages.sent_count + '.$sentIncrement),
+                'fail_count' => DB::raw('smtp_server_usages.fail_count + '.$failIncrement),
                 'updated_at' => $now,
             ]
         );

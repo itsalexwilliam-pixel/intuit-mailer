@@ -214,8 +214,22 @@ class SMTPController extends Controller
             return back()->withErrors(['smtp_csv' => 'CSV file is empty.']);
         }
 
-        $requiredHeaders = ['label', 'host', 'port', 'username', 'password', 'encryption', 'from_email', 'from_name'];
-        $normalizedHeaders = array_map(fn ($h) => strtolower(trim((string) $h)), $headers);
+        $normalizedHeaders = array_map(function ($h) {
+            $header = trim((string) $h);
+            $header = preg_replace('/^\xEF\xBB\xBF/', '', $header);
+            return strtolower($header);
+        }, $headers);
+
+        $nameHeader = in_array('label', $normalizedHeaders, true)
+            ? 'label'
+            : (in_array('name', $normalizedHeaders, true) ? 'name' : null);
+
+        if ($nameHeader === null) {
+            fclose($handle);
+            return back()->withErrors(['smtp_csv' => 'Missing required CSV header: label (or name)']);
+        }
+
+        $requiredHeaders = ['host', 'port', 'username', 'password', 'encryption', 'from_email', 'from_name'];
 
         foreach ($requiredHeaders as $requiredHeader) {
             if (! in_array($requiredHeader, $normalizedHeaders, true)) {
@@ -233,13 +247,22 @@ class SMTPController extends Controller
         while (($row = fgetcsv($handle)) !== false) {
             $rowNumber++;
 
+            $rawEncryption = strtolower(trim((string) ($row[$headerMap['encryption']] ?? '')));
+
+            $normalizedEncryption = match ($rawEncryption) {
+                'starttls', 'tls' => 'tls',
+                'ssl', 'ssltls' => 'ssl',
+                '', 'none', 'no', 'null', 'off' => 'none',
+                default => $rawEncryption,
+            };
+
             $payload = [
-                'name' => trim((string) ($row[$headerMap['label']] ?? '')),
+                'name' => trim((string) ($row[$headerMap[$nameHeader]] ?? '')),
                 'host' => trim((string) ($row[$headerMap['host']] ?? '')),
                 'port' => (int) trim((string) ($row[$headerMap['port']] ?? '0')),
                 'username' => trim((string) ($row[$headerMap['username']] ?? '')),
                 'password' => trim((string) ($row[$headerMap['password']] ?? '')),
-                'encryption' => trim((string) ($row[$headerMap['encryption']] ?? '')),
+                'encryption' => $normalizedEncryption,
                 'from_email' => trim((string) ($row[$headerMap['from_email']] ?? '')),
                 'from_name' => trim((string) ($row[$headerMap['from_name']] ?? '')),
                 'reply_to_email' => isset($headerMap['reply_to_email']) ? trim((string) ($row[$headerMap['reply_to_email']] ?? '')) : null,

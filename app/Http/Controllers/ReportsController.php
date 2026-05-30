@@ -148,14 +148,14 @@ class ReportsController extends Controller
             ->where('email_queue.status', 'sent')
             ->whereBetween('email_queue.sent_at', [$from, $to])
             ->when($campaignId, fn ($q) => $q->where('email_queue.campaign_id', $campaignId))
-            ->selectRaw('
+            ->selectRaw("
                 email_queue.campaign_id,
-                COALESCE(campaigns.name, "Single / Unnamed") as campaign_name,
+                COALESCE(campaigns.name, 'Single / Unnamed') as campaign_name,
                 campaigns.status as campaign_status,
                 COUNT(DISTINCT email_queue.id) as sent_count,
                 COUNT(DISTINCT email_opens.email_queue_id) as open_count,
                 COUNT(DISTINCT email_clicks.email_queue_id) as click_count
-            ')
+            ")
             ->groupBy('email_queue.campaign_id', 'campaigns.name', 'campaigns.status')
             ->orderByDesc('sent_count')
             ->limit(50)
@@ -177,11 +177,11 @@ class ReportsController extends Controller
             ->whereIn('email_queue.campaign_id', $accountCampaignIds)
             ->whereBetween('email_clicks.created_at', [$from, $to])
             ->when($campaignId, fn ($q) => $q->where('email_queue.campaign_id', $campaignId))
-            ->selectRaw('
-                COALESCE(NULLIF(email_queue.utm_source, ""), "(none)") as utm_source,
-                COALESCE(NULLIF(email_queue.utm_medium, ""), "(none)") as utm_medium,
+            ->selectRaw("
+                COALESCE(NULLIF(email_queue.utm_source, ''), '(none)') as utm_source,
+                COALESCE(NULLIF(email_queue.utm_medium, ''), '(none)') as utm_medium,
                 COUNT(*) as total_clicks
-            ')
+            ")
             ->groupBy('utm_source', 'utm_medium')
             ->orderByDesc('total_clicks')
             ->limit(10)
@@ -192,10 +192,10 @@ class ReportsController extends Controller
             ->whereIn('email_queue.campaign_id', $accountCampaignIds)
             ->whereBetween('email_clicks.created_at', [$from, $to])
             ->when($campaignId, fn ($q) => $q->where('email_queue.campaign_id', $campaignId))
-            ->selectRaw('
-                COALESCE(NULLIF(email_queue.utm_campaign, ""), "(none)") as utm_campaign,
+            ->selectRaw("
+                COALESCE(NULLIF(email_queue.utm_campaign, ''), '(none)') as utm_campaign,
                 COUNT(*) as total_clicks
-            ')
+            ")
             ->groupBy('utm_campaign')
             ->orderByDesc('total_clicks')
             ->limit(10)
