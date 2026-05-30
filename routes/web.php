@@ -125,6 +125,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/smtp',                        [SMTPController::class, 'store'])->name('smtp.store');
         Route::get('/smtp/{smtp}/edit',             [SMTPController::class, 'edit'])->name('smtp.edit');
         Route::put('/smtp/{smtp}',                  [SMTPController::class, 'update'])->name('smtp.update');
+        Route::delete('/smtp/delete-all',           [SMTPController::class, 'destroyAll'])->name('smtp.destroy-all');
         Route::delete('/smtp/{smtp}',               [SMTPController::class, 'destroy'])->name('smtp.destroy');
         Route::patch('/smtp/{smtp}/toggle',         [SMTPController::class, 'toggle'])->name('smtp.toggle');
         Route::post('/smtp/{smtp}/test',            [SMTPController::class, 'testConnection'])->middleware('throttle:10,1')->name('smtp.test');

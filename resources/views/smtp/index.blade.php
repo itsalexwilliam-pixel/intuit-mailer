@@ -5,7 +5,7 @@
 @section('content')
 @php
     $totalServers = $servers->total();
-    $activeServers = $servers->where('is_active', 1)->count();
+    $activeServers = $activeServersCount ?? 0;
 @endphp
 
 <div class="space-y-6">
@@ -35,6 +35,16 @@
     <div class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm">
         <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-semibold text-slate-900 dark:text-white">Add SMTP Server</h2>
+
+            @if($totalServers > 0)
+                <form method="POST" action="{{ route('smtp.destroy-all') }}" onsubmit="return confirm('Delete ALL SMTP servers for this account? This cannot be undone.')">
+                    @csrf
+                    @method('DELETE')
+                    <button class="inline-flex items-center px-3 py-2 rounded-xl bg-rose-600 text-white text-xs font-semibold hover:bg-rose-700 transition">
+                        Delete All SMTP
+                    </button>
+                </form>
+            @endif
         </div>
 
         <form method="POST" action="{{ route('smtp.store') }}" class="space-y-4">
@@ -146,6 +156,8 @@
             Required headers: label,host,port,username,password,encryption,from_email,from_name
             <br>
             Optional headers: reply_to_email,reply_to_name
+            <br>
+            Default for bulk uploaded SMTP entries: <strong>Daily Limit = 300</strong>
         </p>
 
         @if(session()->has('smtp_bulk_success_count') || session()->has('smtp_bulk_failed_rows'))

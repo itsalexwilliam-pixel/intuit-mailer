@@ -36,3 +36,13 @@
 - [x] Enforce 10-second gap between each sent email in worker processing path
 - [x] Keep fallback/retry behavior intact when an SMTP fails or reaches daily limit
 - [ ] Provide EC2 diagnostic commands to verify SMTP id sequence and 10-second pacing
+
+# SMTP bulk upload optimization + admin controls TODO
+
+- [x] Optimize `app/Http/Controllers/SMTPController.php::bulkUpload` to avoid per-row DB uniqueness queries (N+1) by preloading existing account SMTP keys and validating in-memory
+- [x] Set default `daily_limit = 300` for CSV bulk-uploaded SMTP entries
+- [x] Add `destroyAll` action in `SMTPController` to delete all SMTP entries for current account at once
+- [x] Add route in `routes/web.php` for bulk delete all SMTP action
+- [x] Add "Delete All SMTP" action UI + confirmation in `resources/views/smtp/index.blade.php`
+- [x] Update SMTP bulk-upload help text to mention default per-SMTP daily limit (300)
+- [ ] Run critical-path checks for bulk upload, delete-all, and daily limit persistence

@@ -7,6 +7,8 @@ use App\Models\SmtpServerUsage;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
@@ -22,7 +24,9 @@ class SMTPController extends Controller
             ->latest()
             ->paginate(10);
 
-        return view('smtp.index', compact('servers'));
+        $activeServersCount = SmtpServer::forAccount($accountId)->where('is_active', true)->count();
+
+        return view('smtp.index', compact('servers', 'activeServersCount'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -128,6 +132,15 @@ class SMTPController extends Controller
         $smtp->delete();
 
         return redirect()->route('smtp.index')->with('success', 'SMTP server deleted.');
+    }
+
+    public function destroyAll(Request $request): RedirectResponse
+    {
+        $accountId = $this->getAccountId($request);
+
+        $deletedCount = SmtpServer::forAccount($accountId)->delete();
+
+        return redirect()->route('smtp.index')->with('success', "Deleted {$deletedCount} SMTP server(s).");
     }
 
     public function testConnection(Request $request, SmtpServer $smtp): RedirectResponse
@@ -240,9 +253,26 @@ class SMTPController extends Controller
 
         $headerMap = array_flip($normalizedHeaders);
 
+        $existingServers = SmtpServer::forAccount($accountId)
+            ->get(['name', 'host', 'username']);
+
+        $existingNameKeys = [];
+        $existingHostUserKeys = [];
+
+        foreach ($existingServers as $existingServer) {
+            $existingNameKeys[mb_strtolower(trim((string) $existingServer->name))] = true;
+
+            $existingHostUserKeys[
+                mb_strtolower(trim((string) $existingServer->host)) . '|' .
+                mb_strtolower(trim((string) $existingServer->username))
+            ] = true;
+        }
+
         $successCount = 0;
         $failedRows = [];
+        $rowsToInsert = [];
         $rowNumber = 1;
+        $now = now();
 
         while (($row = fgetcsv($handle)) !== false) {
             $rowNumber++;
@@ -271,8 +301,27 @@ class SMTPController extends Controller
                 'priority' => null,
             ];
 
+            $nameKey = mb_strtolower($payload['name']);
+            $hostUserKey = mb_strtolower($payload['host']) . '|' . mb_strtolower($payload['username']);
+
+            if (isset($existingNameKeys[$nameKey])) {
+                $failedRows[] = [
+                    'row' => $rowNumber,
+                    'reason' => 'SMTP name already exists for this account.',
+                ];
+                continue;
+            }
+
+            if (isset($existingHostUserKeys[$hostUserKey])) {
+                $failedRows[] = [
+                    'row' => $rowNumber,
+                    'reason' => 'Duplicate host+username for this account.',
+                ];
+                continue;
+            }
+
             $validator = Validator::make($payload, [
-                'name' => ['required', 'string', 'max:255', Rule::unique('smtp_servers', 'name')->where('account_id', $accountId)],
+                'name' => ['required', 'string', 'max:255'],
                 'host' => ['required', 'string', 'max:255'],
                 'port' => ['required', 'integer', 'min:1', 'max:65535'],
                 'username' => ['required', 'string', 'max:255'],
@@ -292,40 +341,37 @@ class SMTPController extends Controller
                 continue;
             }
 
-            $duplicate = SmtpServer::forAccount($accountId)
-                ->where('host', $payload['host'])
-                ->where('username', $payload['username'])
-                ->exists();
-
-            if ($duplicate) {
-                $failedRows[] = [
-                    'row' => $rowNumber,
-                    'reason' => 'Duplicate host+username for this account.',
-                ];
-                continue;
-            }
-
-            SmtpServer::create([
+            $rowsToInsert[] = [
                 'account_id' => $accountId,
                 'name' => $payload['name'],
                 'host' => $payload['host'],
                 'port' => $payload['port'],
                 'username' => $payload['username'],
-                'password' => $payload['password'],
+                'password' => Crypt::encryptString($payload['password']),
                 'encryption' => $payload['encryption'],
                 'from_email' => $payload['from_email'],
                 'from_name' => $payload['from_name'],
                 'reply_to_email' => $payload['reply_to_email'] ?: null,
                 'reply_to_name' => $payload['reply_to_name'] ?: null,
                 'is_active' => true,
-                'daily_limit' => null,
+                'daily_limit' => 300,
                 'priority' => null,
-            ]);
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
 
-            $successCount++;
+            $existingNameKeys[$nameKey] = true;
+            $existingHostUserKeys[$hostUserKey] = true;
         }
 
         fclose($handle);
+
+        if (! empty($rowsToInsert)) {
+            foreach (array_chunk($rowsToInsert, 200) as $chunk) {
+                DB::table('smtp_servers')->insert($chunk);
+                $successCount += count($chunk);
+            }
+        }
 
         return redirect()->route('smtp.index')->with([
             'smtp_bulk_success_count' => $successCount,
