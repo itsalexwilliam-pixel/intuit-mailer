@@ -191,17 +191,19 @@ class ContactManagementFeatureTest extends TestCase
         $response->assertViewHas('skipped', 4);
 
         $this->assertDatabaseHas('contacts', [
+            'account_id' => $accountId,
             'name' => 'Valid One',
             'email' => 'valid1@example.com',
         ]);
 
         $this->assertDatabaseHas('contacts', [
+            'account_id' => $accountId,
             'name' => 'Valid Two',
             'email' => 'valid2@example.com',
         ]);
 
-        $validOne = Contact::where('email', 'valid1@example.com')->firstOrFail();
-        $validTwo = Contact::where('email', 'valid2@example.com')->firstOrFail();
+        $validOne = Contact::where('account_id', $accountId)->where('email', 'valid1@example.com')->firstOrFail();
+        $validTwo = Contact::where('account_id', $accountId)->where('email', 'valid2@example.com')->firstOrFail();
 
         $this->assertDatabaseHas('contact_group', [
             'contact_id' => $validOne->id,
@@ -212,6 +214,59 @@ class ContactManagementFeatureTest extends TestCase
             'contact_id' => $validTwo->id,
             'group_id' => $group->id,
         ]);
+    }
+
+    public function test_csv_import_allows_same_email_in_different_account(): void
+    {
+        $accountA = $this->createAccountId();
+        $accountB = $this->createAccountId();
+
+        $userA = $this->actingAsUser($accountA);
+
+        Contact::create([
+            'account_id' => $accountB,
+            'name' => 'Existing In Other Account',
+            'email' => 'shared@example.com',
+        ]);
+
+        $csv = implode("\n", [
+            'name,email',
+            'Local Account Contact,shared@example.com',
+        ]);
+
+        $file = UploadedFile::fake()->createWithContent('contacts.csv', $csv);
+
+        $response = $this->actingAs($userA)->post(route('import.store'), [
+            'csv_file' => $file,
+            'name_column' => 'name',
+            'email_column' => 'email',
+        ]);
+
+        $response->assertOk();
+        $response->assertViewIs('import.result');
+        $response->assertViewHas('imported', 1);
+        $response->assertViewHas('skipped', 0);
+
+        $this->assertDatabaseHas('contacts', [
+            'account_id' => $accountA,
+            'email' => 'shared@example.com',
+            'name' => 'Local Account Contact',
+        ]);
+    }
+
+    public function test_csv_import_rejects_file_over_limit(): void
+    {
+        $this->actingAsUser();
+
+        $file = UploadedFile::fake()->create('too-large.csv', 60000, 'text/csv');
+
+        $response = $this->post(route('import.store'), [
+            'csv_file' => $file,
+            'name_column' => 'name',
+            'email_column' => 'email',
+        ]);
+
+        $response->assertSessionHasErrors(['csv_file']);
     }
 
     public function test_bulk_delete_success_same_account(): void

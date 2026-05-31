@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Contact;
 use App\Models\Group;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class ImportController extends Controller
@@ -18,7 +19,7 @@ class ImportController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'csv_file'             => ['required', 'file'],
+            'csv_file'             => ['required', 'file', 'mimes:csv,txt', 'max:51200'],
             'name_column'          => ['nullable', 'string'],
             'first_name_column'    => ['nullable', 'string'],
             'last_name_column'     => ['nullable', 'string'],
@@ -76,12 +77,13 @@ class ImportController extends Controller
         $total = 0;
         $imported = 0;
         $skipped = 0;
-        $fileEmails = [];
         $failedRows = [];   // [['row' => N, 'email' => '...', 'name' => '...', 'reasons' => [...]]]
         $rowNumber = 1;     // 1-based, header is row 0
+        $seenInFile = [];
+        $rowsToInsert = [];
+        $emailToRowMeta = [];
 
         while (($row = fgetcsv($handle)) !== false) {
-            // Skip blank rows
             if (count(array_filter($row, fn($v) => trim($v) !== '')) === 0) {
                 continue;
             }
@@ -90,7 +92,6 @@ class ImportController extends Controller
             $total++;
             $reasons = [];
 
-            // Build name from single column or first+last
             if ($hasName) {
                 $name = trim((string)($row[$nameIndex] ?? ''));
             } else {
@@ -103,7 +104,6 @@ class ImportController extends Controller
             $businessName = $businessNameIndex !== false ? trim((string)($row[$businessNameIndex] ?? '')) : null;
             $website      = $websiteIndex !== false ? trim((string)($row[$websiteIndex] ?? '')) : null;
 
-            // Add https:// if website has no scheme
             if ($website && !preg_match('/^https?:\/\//i', $website)) {
                 $website = 'https://' . $website;
             }
@@ -123,12 +123,8 @@ class ImportController extends Controller
                 }
             }
 
-            if ($email !== '' && in_array($email, $fileEmails, true)) {
+            if ($email !== '' && isset($seenInFile[$email])) {
                 $reasons[] = 'Duplicate email in this file';
-            }
-
-            if ($email !== '' && empty($reasons) && Contact::where('email', $email)->exists()) {
-                $reasons[] = 'Email already exists in contacts';
             }
 
             if (!empty($reasons)) {
@@ -142,18 +138,102 @@ class ImportController extends Controller
                 continue;
             }
 
-            $contact = Contact::create([
+            $seenInFile[$email] = true;
+
+            $rowsToInsert[] = [
                 'account_id'    => $accountId,
                 'name'          => $name,
                 'business_name' => $businessName ?: null,
                 'email'         => $email,
                 'website'       => $website ?: null,
-            ]);
+                'created_at'    => now(),
+                'updated_at'    => now(),
+            ];
 
-            $contact->groups()->sync($request->groups ?? []);
+            $emailToRowMeta[$email] = [
+                'row' => $rowNumber,
+                'name' => $name !== '' ? $name : '—',
+            ];
+        }
 
-            $fileEmails[] = $email;
-            $imported++;
+        if (!empty($rowsToInsert)) {
+            $candidateEmails = array_values(array_unique(array_column($rowsToInsert, 'email')));
+
+            $existingEmails = [];
+            foreach (array_chunk($candidateEmails, 500) as $chunk) {
+                $query = Contact::query()->whereIn('email', $chunk);
+
+                if ($accountId > 0) {
+                    $query->where('account_id', $accountId);
+                }
+
+                $found = $query->pluck('email')->all();
+
+                foreach ($found as $existingEmail) {
+                    $existingEmails[$existingEmail] = true;
+                }
+            }
+
+            $insertRows = [];
+            foreach ($rowsToInsert as $row) {
+                if (isset($existingEmails[$row['email']])) {
+                    $skipped++;
+                    $failedRows[] = [
+                        'row' => $emailToRowMeta[$row['email']]['row'] ?? '—',
+                        'name' => $emailToRowMeta[$row['email']]['name'] ?? '—',
+                        'email' => $row['email'],
+                        'reasons' => ['Email already exists in contacts'],
+                    ];
+                    continue;
+                }
+
+                $insertRows[] = $row;
+            }
+
+            if (!empty($insertRows)) {
+                DB::table('contacts')->insertOrIgnore($insertRows);
+
+                $insertedContactsQuery = Contact::query()
+                    ->whereIn('email', array_column($insertRows, 'email'));
+
+                if ($accountId > 0) {
+                    $insertedContactsQuery->where('account_id', $accountId);
+                }
+
+                $insertedContacts = $insertedContactsQuery->get(['id', 'email']);
+
+                $imported = $insertedContacts->count();
+
+                $groupIds = $request->groups ?? [];
+                if (!empty($groupIds) && $imported > 0) {
+                    $pivotRows = [];
+                    foreach ($insertedContacts as $contact) {
+                        foreach ($groupIds as $groupId) {
+                            $pivotRows[] = [
+                                'contact_id' => $contact->id,
+                                'group_id' => (int) $groupId,
+                            ];
+                        }
+                    }
+
+                    if (!empty($pivotRows)) {
+                        DB::table('contact_group')->insertOrIgnore($pivotRows);
+                    }
+                }
+
+                $insertedEmailSet = array_flip($insertedContacts->pluck('email')->all());
+                foreach ($insertRows as $row) {
+                    if (!isset($insertedEmailSet[$row['email']])) {
+                        $skipped++;
+                        $failedRows[] = [
+                            'row' => $emailToRowMeta[$row['email']]['row'] ?? '—',
+                            'name' => $emailToRowMeta[$row['email']]['name'] ?? '—',
+                            'email' => $row['email'],
+                            'reasons' => ['Email already exists in contacts'],
+                        ];
+                    }
+                }
+            }
         }
 
         fclose($handle);
