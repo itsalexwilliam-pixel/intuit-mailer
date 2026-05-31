@@ -165,7 +165,7 @@ class SMTPController extends Controller
             ]);
 
             return back()->withErrors([
-                'smtp_test' => "SMTP test failed for {$smtp->name}: " . $e->getMessage(),
+                'smtp_test' => "SMTP test failed for {$smtp->name}: " . $this->formatSmtpExceptionMessage($e),
             ]);
         }
     }
@@ -201,7 +201,7 @@ class SMTPController extends Controller
             ]);
 
             return back()->withErrors([
-                'smtp_test_email' => "Failed to send test email via {$smtp->name}: " . $e->getMessage(),
+                'smtp_test_email' => "Failed to send test email via {$smtp->name}: " . $this->formatSmtpExceptionMessage($e),
             ]);
         }
     }
@@ -347,7 +347,7 @@ class SMTPController extends Controller
                 'host' => $payload['host'],
                 'port' => $payload['port'],
                 'username' => $payload['username'],
-                'password' => Crypt::encryptString($payload['password']),
+                'password' => encrypt($payload['password']),
                 'encryption' => $payload['encryption'],
                 'from_email' => $payload['from_email'],
                 'from_name' => $payload['from_name'],
@@ -440,16 +440,37 @@ class SMTPController extends Controller
     {
         config([
             'mail.default' => 'smtp',
+            'mail.mailers.smtp.transport' => 'smtp',
             'mail.mailers.smtp.host' => $smtp->host,
-            'mail.mailers.smtp.port' => $smtp->port,
+            'mail.mailers.smtp.port' => (int) $smtp->port,
             'mail.mailers.smtp.username' => $smtp->username,
             'mail.mailers.smtp.password' => $smtp->password,
             'mail.mailers.smtp.encryption' => $smtp->encryption === 'none' ? null : $smtp->encryption,
-            'mail.mailers.smtp.timeout' => 8,
+            'mail.mailers.smtp.timeout' => 20,
+            'mail.mailers.smtp.stream' => [
+                'ssl' => [
+                    'verify_peer' => true,
+                    'verify_peer_name' => true,
+                    'allow_self_signed' => false,
+                ],
+            ],
             'mail.from.address' => $smtp->from_email,
             'mail.from.name' => $smtp->from_name,
             'mail.reply_to.address' => $smtp->reply_to_email ?: $smtp->from_email,
             'mail.reply_to.name' => $smtp->reply_to_name ?: $smtp->from_name,
         ]);
+
+        app('mail.manager')->forgetMailers();
+    }
+
+    private function formatSmtpExceptionMessage(\Throwable $e): string
+    {
+        $message = $e->getMessage();
+
+        if (stripos($message, 'timed out') !== false) {
+            return $message.' Please verify SMTP host/port, TLS mode, DNS resolution, and that outbound port 587 is allowed by your server firewall/provider.';
+        }
+
+        return $message;
     }
 }

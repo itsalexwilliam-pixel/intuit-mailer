@@ -327,14 +327,23 @@ class WorkMailsQueueCommand extends Command
                 'mail.default' => 'smtp',
                 'mail.mailers.smtp.transport' => 'smtp',
                 'mail.mailers.smtp.host' => $smtp->host,
-                'mail.mailers.smtp.port' => $smtp->port,
+                'mail.mailers.smtp.port' => (int) $smtp->port,
                 'mail.mailers.smtp.encryption' => $smtp->encryption === 'none' ? null : $smtp->encryption,
                 'mail.mailers.smtp.username' => $smtp->username,
                 'mail.mailers.smtp.password' => $smtp->password,
-                'mail.mailers.smtp.timeout' => 8,
+                'mail.mailers.smtp.timeout' => 20,
+                'mail.mailers.smtp.stream' => [
+                    'ssl' => [
+                        'verify_peer' => true,
+                        'verify_peer_name' => true,
+                        'allow_self_signed' => false,
+                    ],
+                ],
                 'mail.from.address' => $smtp->from_email,
                 'mail.from.name' => $smtp->from_name,
             ]);
+
+            app('mail.manager')->forgetMailers();
 
             try {
                 Mail::to($item->email)->send(new CampaignMail($item->campaign, $item->contact, $item->id, $item->ab_variant));

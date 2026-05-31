@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Crypt;
 
 class SmtpServer extends Model
 {
@@ -58,7 +59,39 @@ class SmtpServer extends Model
 
     public function getPasswordAttribute($value): string
     {
-        return decrypt($value);
+        if ($value === null || $value === '') {
+            return '';
+        }
+
+        // Normal Laravel encrypted payload (compatible with encrypt()).
+        try {
+            return decrypt($value);
+        } catch (\Throwable $e) {
+            // Continue to legacy fallbacks below.
+        }
+
+        // Legacy/custom payload stored as JSON array:
+        // ["iv","value","mac","tag"]
+        if (is_string($value) && str_starts_with(trim($value), '[')) {
+            try {
+                $decoded = json_decode($value, true);
+                if (is_array($decoded) && count($decoded) >= 3) {
+                    $legacyPayload = [
+                        'iv' => $decoded[0] ?? null,
+                        'value' => $decoded[1] ?? null,
+                        'mac' => $decoded[2] ?? null,
+                        'tag' => $decoded[3] ?? '',
+                    ];
+
+                    return Crypt::decrypt(json_encode($legacyPayload));
+                }
+            } catch (\Throwable $e) {
+                // Fall through to plaintext fallback.
+            }
+        }
+
+        // Last fallback: treat as plaintext (for old manually inserted rows).
+        return (string) $value;
     }
 
     public function maskedPassword(): string

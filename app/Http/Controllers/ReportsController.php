@@ -397,7 +397,7 @@ class ReportsController extends Controller
         [$dateRange, $from, $to] = $this->resolveDateRange($request, '30d');
         $campaignId = $request->integer('campaign_id') ?: null;
 
-        if (!in_array($type, ['campaign', 'single-email', 'warmup'], true)) {
+        if (!in_array($type, ['campaign', 'single-email', 'warmup', 'detailed-leads'], true)) {
             $type = 'campaign';
         }
 
@@ -480,11 +480,44 @@ class ReportsController extends Controller
                         $pendingCount,
                     ]);
                 }
-            } else {
-                fputcsv($handle, ['Campaign', 'Recipient Email', 'Sent At', 'Opened', 'Clicked', 'Unsubscribed', 'Status']);
+            } elseif ($type === 'detailed-leads') {
+                fputcsv($handle, [
+                    'Campaign ID',
+                    'Campaign Name',
+                    'Campaign Status',
+                    'Queue ID',
+                    'Lead Name',
+                    'Business Name',
+                    'Lead Email',
+                    'Website',
+                    'Is Bounced',
+                    'From Name',
+                    'From Email',
+                    'Subject',
+                    'UTM Source',
+                    'UTM Medium',
+                    'UTM Campaign',
+                    'UTM Term',
+                    'UTM Content',
+                    'Sent At',
+                    'Open Count',
+                    'First Open At',
+                    'Last Open At',
+                    'Click Count',
+                    'First Click At',
+                    'Last Click At',
+                    'Unsubscribed',
+                    'Unsubscribed At',
+                    'Delivery Status',
+                ]);
 
                 $rows = EmailQueue::query()
-                    ->leftJoin('campaigns', 'campaigns.id', '=', 'email_queue.campaign_id')
+                    ->leftJoin('campaigns', function ($join) {
+                        $join->on('campaigns.id', '=', 'email_queue.campaign_id');
+                    })
+                    ->leftJoin('contacts', function ($join) {
+                        $join->on('contacts.id', '=', 'email_queue.contact_id');
+                    })
                     ->leftJoin('email_opens', 'email_opens.email_queue_id', '=', 'email_queue.id')
                     ->leftJoin('email_clicks', 'email_clicks.email_queue_id', '=', 'email_queue.id')
                     ->leftJoin('unsubscribes', 'unsubscribes.email', '=', 'email_queue.email')
@@ -493,27 +526,216 @@ class ReportsController extends Controller
                     ->whereBetween('email_queue.sent_at', [$from, $to])
                     ->when($campaignId, fn ($q) => $q->where('email_queue.campaign_id', $campaignId))
                     ->selectRaw('
+                        email_queue.id as queue_id,
+                        email_queue.campaign_id,
                         campaigns.name as campaign_name,
-                        email_queue.email,
+                        campaigns.status as campaign_status,
+                        email_queue.email as lead_email,
+                        email_queue.from_name,
+                        email_queue.from_email,
+                        email_queue.subject,
+                        email_queue.utm_source,
+                        email_queue.utm_medium,
+                        email_queue.utm_campaign,
+                        email_queue.utm_term,
+                        email_queue.utm_content,
                         email_queue.sent_at,
-                        email_queue.status,
-                        MAX(email_opens.id) as opened_id,
-                        MAX(email_clicks.id) as clicked_id,
-                        MAX(unsubscribes.id) as unsub_id
+                        email_queue.status as delivery_status,
+                        contacts.name as lead_name,
+                        contacts.business_name,
+                        contacts.website,
+                        contacts.is_bounced,
+                        COUNT(DISTINCT email_opens.id) as open_count,
+                        MIN(email_opens.created_at) as first_open_at,
+                        MAX(email_opens.created_at) as last_open_at,
+                        COUNT(DISTINCT email_clicks.id) as click_count,
+                        MIN(email_clicks.created_at) as first_click_at,
+                        MAX(email_clicks.created_at) as last_click_at,
+                        MAX(unsubscribes.id) as unsub_id,
+                        MAX(unsubscribes.created_at) as unsubscribed_at
                     ')
-                    ->groupBy('campaigns.name', 'email_queue.email', 'email_queue.sent_at', 'email_queue.status')
+                    ->groupBy(
+                        'email_queue.id',
+                        'email_queue.campaign_id',
+                        'campaigns.name',
+                        'campaigns.status',
+                        'email_queue.email',
+                        'email_queue.from_name',
+                        'email_queue.from_email',
+                        'email_queue.subject',
+                        'email_queue.utm_source',
+                        'email_queue.utm_medium',
+                        'email_queue.utm_campaign',
+                        'email_queue.utm_term',
+                        'email_queue.utm_content',
+                        'email_queue.sent_at',
+                        'email_queue.status',
+                        'contacts.name',
+                        'contacts.business_name',
+                        'contacts.website',
+                        'contacts.is_bounced'
+                    )
                     ->orderByDesc('email_queue.sent_at')
                     ->get();
 
                 foreach ($rows as $row) {
                     fputcsv($handle, [
+                        $row->campaign_id,
                         $row->campaign_name,
-                        $row->email,
+                        $row->campaign_status,
+                        $row->queue_id,
+                        $row->lead_name,
+                        $row->business_name,
+                        $row->lead_email,
+                        $row->website,
+                        (int) ($row->is_bounced ?? 0) === 1 ? 'Yes' : 'No',
+                        $row->from_name,
+                        $row->from_email,
+                        $row->subject,
+                        $row->utm_source,
+                        $row->utm_medium,
+                        $row->utm_campaign,
+                        $row->utm_term,
+                        $row->utm_content,
                         optional($row->sent_at)->toDateTimeString(),
-                        $row->opened_id ? 'Yes' : 'No',
-                        $row->clicked_id ? 'Yes' : 'No',
+                        (int) $row->open_count,
+                        $row->first_open_at,
+                        $row->last_open_at,
+                        (int) $row->click_count,
+                        $row->first_click_at,
+                        $row->last_click_at,
                         $row->unsub_id ? 'Yes' : 'No',
-                        $row->status,
+                        $row->unsubscribed_at,
+                        $row->delivery_status,
+                    ]);
+                }
+            } else {
+                fputcsv($handle, [
+                    'Campaign ID',
+                    'Campaign Name',
+                    'Campaign Status',
+                    'Queue ID',
+                    'Lead Name',
+                    'Business Name',
+                    'Lead Email',
+                    'Website',
+                    'Is Bounced',
+                    'From Name',
+                    'From Email',
+                    'Subject',
+                    'UTM Source',
+                    'UTM Medium',
+                    'UTM Campaign',
+                    'UTM Term',
+                    'UTM Content',
+                    'Sent At',
+                    'Open Count',
+                    'First Open At',
+                    'Last Open At',
+                    'Click Count',
+                    'First Click At',
+                    'Last Click At',
+                    'Unsubscribed',
+                    'Unsubscribed At',
+                    'Delivery Status',
+                ]);
+
+                $rows = EmailQueue::query()
+                    ->leftJoin('campaigns', function ($join) {
+                        $join->on('campaigns.id', '=', 'email_queue.campaign_id');
+                    })
+                    ->leftJoin('contacts', function ($join) {
+                        $join->on('contacts.id', '=', 'email_queue.contact_id');
+                    })
+                    ->leftJoin('email_opens', 'email_opens.email_queue_id', '=', 'email_queue.id')
+                    ->leftJoin('email_clicks', 'email_clicks.email_queue_id', '=', 'email_queue.id')
+                    ->leftJoin('unsubscribes', 'unsubscribes.email', '=', 'email_queue.email')
+                    ->where('campaigns.account_id', $accountId)
+                    ->where('email_queue.status', 'sent')
+                    ->whereBetween('email_queue.sent_at', [$from, $to])
+                    ->when($campaignId, fn ($q) => $q->where('email_queue.campaign_id', $campaignId))
+                    ->selectRaw('
+                        email_queue.id as queue_id,
+                        email_queue.campaign_id,
+                        campaigns.name as campaign_name,
+                        campaigns.status as campaign_status,
+                        email_queue.email as lead_email,
+                        email_queue.from_name,
+                        email_queue.from_email,
+                        email_queue.subject,
+                        email_queue.utm_source,
+                        email_queue.utm_medium,
+                        email_queue.utm_campaign,
+                        email_queue.utm_term,
+                        email_queue.utm_content,
+                        email_queue.sent_at,
+                        email_queue.status as delivery_status,
+                        contacts.name as lead_name,
+                        contacts.business_name,
+                        contacts.website,
+                        contacts.is_bounced,
+                        COUNT(DISTINCT email_opens.id) as open_count,
+                        MIN(email_opens.created_at) as first_open_at,
+                        MAX(email_opens.created_at) as last_open_at,
+                        COUNT(DISTINCT email_clicks.id) as click_count,
+                        MIN(email_clicks.created_at) as first_click_at,
+                        MAX(email_clicks.created_at) as last_click_at,
+                        MAX(unsubscribes.id) as unsub_id,
+                        MAX(unsubscribes.created_at) as unsubscribed_at
+                    ')
+                    ->groupBy(
+                        'email_queue.id',
+                        'email_queue.campaign_id',
+                        'campaigns.name',
+                        'campaigns.status',
+                        'email_queue.email',
+                        'email_queue.from_name',
+                        'email_queue.from_email',
+                        'email_queue.subject',
+                        'email_queue.utm_source',
+                        'email_queue.utm_medium',
+                        'email_queue.utm_campaign',
+                        'email_queue.utm_term',
+                        'email_queue.utm_content',
+                        'email_queue.sent_at',
+                        'email_queue.status',
+                        'contacts.name',
+                        'contacts.business_name',
+                        'contacts.website',
+                        'contacts.is_bounced'
+                    )
+                    ->orderByDesc('email_queue.sent_at')
+                    ->get();
+
+                foreach ($rows as $row) {
+                    fputcsv($handle, [
+                        $row->campaign_id,
+                        $row->campaign_name,
+                        $row->campaign_status,
+                        $row->queue_id,
+                        $row->lead_name,
+                        $row->business_name,
+                        $row->lead_email,
+                        $row->website,
+                        (int) ($row->is_bounced ?? 0) === 1 ? 'Yes' : 'No',
+                        $row->from_name,
+                        $row->from_email,
+                        $row->subject,
+                        $row->utm_source,
+                        $row->utm_medium,
+                        $row->utm_campaign,
+                        $row->utm_term,
+                        $row->utm_content,
+                        optional($row->sent_at)->toDateTimeString(),
+                        (int) $row->open_count,
+                        $row->first_open_at,
+                        $row->last_open_at,
+                        (int) $row->click_count,
+                        $row->first_click_at,
+                        $row->last_click_at,
+                        $row->unsub_id ? 'Yes' : 'No',
+                        $row->unsubscribed_at,
+                        $row->delivery_status,
                     ]);
                 }
             }

@@ -330,4 +330,253 @@ class ReportsFeatureTest extends TestCase
         $response = $this->actingAs($userA)->getJson(route('reports.email.show', ['id' => $queueIdForB]));
         $response->assertNotFound();
     }
+
+    public function test_utm_sections_show_aggregated_source_medium_and_campaign_counts(): void
+    {
+        $user = $this->actingAsAccountUser();
+        $accountId = (int) $user->account_id;
+
+        $campaignId = DB::table('campaigns')->insertGetId([
+            'account_id' => $accountId,
+            'name' => 'UTM Aggregation Campaign',
+            'subject' => 'UTM Subject',
+            'body' => '<p>UTM</p>',
+            'status' => 'draft',
+            'scheduled_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $q1 = DB::table('email_queue')->insertGetId([
+            'account_id' => $accountId,
+            'campaign_id' => $campaignId,
+            'contact_id' => null,
+            'email' => 'utm1@example.com',
+            'type' => 'campaign',
+            'subject' => 'UTM A',
+            'body' => '<p>A</p>',
+            'status' => 'sent',
+            'sent_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+            'utm_source' => 'newsletter',
+            'utm_medium' => 'email',
+            'utm_campaign' => 'spring-sale',
+        ]);
+
+        $q2 = DB::table('email_queue')->insertGetId([
+            'account_id' => $accountId,
+            'campaign_id' => $campaignId,
+            'contact_id' => null,
+            'email' => 'utm2@example.com',
+            'type' => 'campaign',
+            'subject' => 'UTM B',
+            'body' => '<p>B</p>',
+            'status' => 'sent',
+            'sent_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+            'utm_source' => 'newsletter',
+            'utm_medium' => 'email',
+            'utm_campaign' => 'spring-sale',
+        ]);
+
+        DB::table('email_clicks')->insert([
+            [
+                'email_queue_id' => $q1,
+                'url' => 'https://example.com/a',
+                'ip_address' => '127.0.0.1',
+                'user_agent' => 'PHPUnit',
+                'clicked_at' => now(),
+                'created_at' => now(),
+            ],
+            [
+                'email_queue_id' => $q2,
+                'url' => 'https://example.com/b',
+                'ip_address' => '127.0.0.1',
+                'user_agent' => 'PHPUnit',
+                'clicked_at' => now(),
+                'created_at' => now(),
+            ],
+        ]);
+
+        $response = $this->get(route('reports.index'));
+
+        $response->assertOk();
+        $response->assertSee('Top UTM Sources');
+        $response->assertSee('newsletter');
+        $response->assertSee('email');
+        $response->assertSee('Top UTM Campaigns');
+        $response->assertSee('spring-sale');
+    }
+
+    public function test_utm_data_respects_account_isolation(): void
+    {
+        $accountA = $this->createAccountId();
+        $accountB = $this->createAccountId();
+
+        $userA = User::factory()->create(['account_id' => $accountA]);
+        DB::table('accounts')->where('id', $accountA)->update(['owner_user_id' => $userA->id]);
+        DB::table('account_user')->insert([
+            'account_id' => $accountA,
+            'user_id' => $userA->id,
+            'role' => 'owner',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $campaignA = DB::table('campaigns')->insertGetId([
+            'account_id' => $accountA,
+            'name' => 'A Campaign',
+            'subject' => 'A',
+            'body' => '<p>A</p>',
+            'status' => 'draft',
+            'scheduled_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $campaignB = DB::table('campaigns')->insertGetId([
+            'account_id' => $accountB,
+            'name' => 'B Campaign',
+            'subject' => 'B',
+            'body' => '<p>B</p>',
+            'status' => 'draft',
+            'scheduled_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $queueA = DB::table('email_queue')->insertGetId([
+            'account_id' => $accountA,
+            'campaign_id' => $campaignA,
+            'contact_id' => null,
+            'email' => 'a@example.com',
+            'type' => 'campaign',
+            'subject' => 'A',
+            'body' => '<p>A</p>',
+            'status' => 'sent',
+            'sent_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+            'utm_source' => 'visible-source',
+            'utm_medium' => 'email',
+            'utm_campaign' => 'visible-campaign',
+        ]);
+
+        $queueB = DB::table('email_queue')->insertGetId([
+            'account_id' => $accountB,
+            'campaign_id' => $campaignB,
+            'contact_id' => null,
+            'email' => 'b@example.com',
+            'type' => 'campaign',
+            'subject' => 'B',
+            'body' => '<p>B</p>',
+            'status' => 'sent',
+            'sent_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+            'utm_source' => 'hidden-source',
+            'utm_medium' => 'social',
+            'utm_campaign' => 'hidden-campaign',
+        ]);
+
+        DB::table('email_clicks')->insert([
+            [
+                'email_queue_id' => $queueA,
+                'url' => 'https://example.com/a',
+                'ip_address' => '127.0.0.1',
+                'user_agent' => 'PHPUnit',
+                'clicked_at' => now(),
+                'created_at' => now(),
+            ],
+            [
+                'email_queue_id' => $queueB,
+                'url' => 'https://example.com/b',
+                'ip_address' => '127.0.0.1',
+                'user_agent' => 'PHPUnit',
+                'clicked_at' => now(),
+                'created_at' => now(),
+            ],
+        ]);
+
+        $response = $this->actingAs($userA)->get(route('reports.index'));
+
+        $response->assertOk();
+        $response->assertSee('visible-source');
+        $response->assertSee('visible-campaign');
+        $response->assertDontSee('hidden-source');
+        $response->assertDontSee('hidden-campaign');
+    }
+
+    public function test_campaign_and_detailed_leads_exports_include_utm_columns_and_values(): void
+    {
+        $user = $this->actingAsAccountUser();
+        $accountId = (int) $user->account_id;
+
+        $campaignId = DB::table('campaigns')->insertGetId([
+            'account_id' => $accountId,
+            'name' => 'Export UTM Campaign',
+            'subject' => 'Export',
+            'body' => '<p>Export</p>',
+            'status' => 'draft',
+            'scheduled_at' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $queueId = DB::table('email_queue')->insertGetId([
+            'account_id' => $accountId,
+            'campaign_id' => $campaignId,
+            'contact_id' => null,
+            'email' => 'export@example.com',
+            'type' => 'campaign',
+            'subject' => 'Export Subject',
+            'body' => '<p>Export Body</p>',
+            'status' => 'sent',
+            'sent_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+            'utm_source' => 'newsletter',
+            'utm_medium' => 'email',
+            'utm_campaign' => 'q3-launch',
+            'utm_term' => 'segment-a',
+            'utm_content' => 'cta-top',
+        ]);
+
+        DB::table('email_clicks')->insert([
+            'email_queue_id' => $queueId,
+            'url' => 'https://example.com/export',
+            'ip_address' => '127.0.0.1',
+            'user_agent' => 'PHPUnit',
+            'clicked_at' => now(),
+            'created_at' => now(),
+        ]);
+
+        $campaignExport = $this->get(route('reports.export', ['type' => 'campaign']));
+        $campaignExport->assertOk();
+        $campaignContent = $campaignExport->streamedContent();
+
+        $this->assertStringContainsString('UTM Source', $campaignContent);
+        $this->assertStringContainsString('UTM Medium', $campaignContent);
+        $this->assertStringContainsString('UTM Campaign', $campaignContent);
+        $this->assertStringContainsString('newsletter', $campaignContent);
+        $this->assertStringContainsString('email', $campaignContent);
+        $this->assertStringContainsString('q3-launch', $campaignContent);
+
+        $detailedExport = $this->get(route('reports.export', ['type' => 'detailed-leads']));
+        $detailedExport->assertOk();
+        $detailedContent = $detailedExport->streamedContent();
+
+        $this->assertStringContainsString('UTM Source', $detailedContent);
+        $this->assertStringContainsString('UTM Medium', $detailedContent);
+        $this->assertStringContainsString('UTM Campaign', $detailedContent);
+        $this->assertStringContainsString('UTM Term', $detailedContent);
+        $this->assertStringContainsString('UTM Content', $detailedContent);
+        $this->assertStringContainsString('newsletter', $detailedContent);
+        $this->assertStringContainsString('email', $detailedContent);
+        $this->assertStringContainsString('q3-launch', $detailedContent);
+        $this->assertStringContainsString('segment-a', $detailedContent);
+        $this->assertStringContainsString('cta-top', $detailedContent);
+    }
 }

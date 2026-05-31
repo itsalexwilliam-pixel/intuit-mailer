@@ -355,14 +355,23 @@ class CampaignController extends Controller
                 'mail.default' => 'smtp',
                 'mail.mailers.smtp.transport' => 'smtp',
                 'mail.mailers.smtp.host' => $smtp->host,
-                'mail.mailers.smtp.port' => $smtp->port,
+                'mail.mailers.smtp.port' => (int) $smtp->port,
                 'mail.mailers.smtp.username' => $smtp->username,
                 'mail.mailers.smtp.password' => $smtp->password,
                 'mail.mailers.smtp.encryption' => $smtp->encryption === 'none' ? null : $smtp->encryption,
-                'mail.mailers.smtp.timeout' => 8,
+                'mail.mailers.smtp.timeout' => 20,
+                'mail.mailers.smtp.stream' => [
+                    'ssl' => [
+                        'verify_peer' => true,
+                        'verify_peer_name' => true,
+                        'allow_self_signed' => false,
+                    ],
+                ],
                 'mail.from.address' => $smtp->from_email,
                 'mail.from.name' => $smtp->from_name,
             ]);
+
+            app('mail.manager')->forgetMailers();
 
             $mergePlaceholders = [
                 '{{First Name}}', '{{Name}}', '{{Email}}', '{{Business Name}}', '{{Website}}'
@@ -390,7 +399,18 @@ class CampaignController extends Controller
 
             return back()->with('success', 'Test campaign email sent successfully.');
         } catch (\Throwable $e) {
-            return back()->withErrors(['campaign_test_email' => "Failed to send test campaign email: {$e->getMessage()}"]);
+            return back()->withErrors(['campaign_test_email' => 'Failed to send test campaign email: ' . $this->formatSmtpExceptionMessage($e)]);
         }
+    }
+
+    private function formatSmtpExceptionMessage(\Throwable $e): string
+    {
+        $message = $e->getMessage();
+
+        if (stripos($message, 'timed out') !== false) {
+            return $message.' Please verify SMTP host/port, TLS mode, DNS resolution, and that outbound port 587 is allowed by your server firewall/provider.';
+        }
+
+        return $message;
     }
 }
