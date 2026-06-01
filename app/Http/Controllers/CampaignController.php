@@ -105,15 +105,37 @@ class CampaignController extends Controller
     {
         $accountId = $this->currentAccountId();
 
-        $contacts = Contact::query()->where('account_id', $accountId)->with('groups')->orderBy('name')->get();
+        // Keep campaign-create fast on large datasets:
+        // 1) only active account contacts
+        // 2) only select fields needed by the view
+        // 3) eager-load only group id/name for preview mapping
+        $contacts = Contact::query()
+            ->where('account_id', $accountId)
+            ->select(['id', 'name', 'email'])
+            ->orderBy('name')
+            ->get();
+
         $groupContacts = Contact::query()
+            ->where('account_id', $accountId)
             ->whereHas('groups', function ($query) use ($accountId) {
                 $query->where('groups.account_id', $accountId);
             })
-            ->with('groups')
+            ->select(['contacts.id', 'contacts.name', 'contacts.email'])
+            ->with(['groups' => function ($query) use ($accountId) {
+                $query->where('groups.account_id', $accountId)
+                    ->select(['groups.id', 'groups.name']);
+            }])
             ->orderBy('name')
             ->get();
-        $groups = Group::query()->where('account_id', $accountId)->orderBy('name')->get();
+
+        // Load group contact counts in one query (avoids N+1 in Blade)
+        $groups = Group::query()
+            ->where('account_id', $accountId)
+            ->withCount(['contacts as contacts_count' => function ($query) use ($accountId) {
+                $query->where('contacts.account_id', $accountId);
+            }])
+            ->orderBy('name')
+            ->get();
 
         $warmupSchedule = Campaign::WARMUP_SCHEDULE;
 

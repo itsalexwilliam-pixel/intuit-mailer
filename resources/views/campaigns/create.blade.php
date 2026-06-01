@@ -157,8 +157,8 @@
                         <select id="groupIdsSelect" name="group_ids[]" multiple size="8" required
                                 class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
                             @foreach($groups as $group)
-                                <option value="{{ $group->id }}" @selected(collect(old('group_ids'))->contains($group->id)) data-count="{{ $group->contacts()->count() }}">
-                                    {{ $group->name }} ({{ $group->contacts()->count() }} contacts)
+                                <option value="{{ $group->id }}" @selected(collect(old('group_ids'))->contains($group->id)) data-count="{{ $group->contacts_count }}">
+                                    {{ $group->name }} ({{ $group->contacts_count }} contacts)
                                 </option>
                             @endforeach
                         </select>
