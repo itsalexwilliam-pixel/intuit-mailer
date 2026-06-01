@@ -98,11 +98,21 @@
                 <p id="groupSelectionHint" class="mt-1 text-xs text-slate-500">Hold Ctrl/Cmd to select multiple groups (optional).</p>
             </div>
 
+            <div id="importProgressBox" class="hidden rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/80 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+                <div class="flex items-center gap-2">
+                    <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                    </svg>
+                    <span id="importProgressText">Uploading file... please wait. Import is being processed.</span>
+                </div>
+            </div>
+
             <div class="flex items-center gap-3">
                 <button id="importSubmitBtn" type="submit" class="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition">
                     Import
                 </button>
-                <a href="{{ route('contacts.index') }}"
+                <a id="importCancelLink" href="{{ route('contacts.index') }}"
                    class="inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition">
                     Cancel
                 </a>
@@ -116,6 +126,11 @@
 <script>
     const groupsSelect = document.getElementById('groupsSelect');
     const groupSelectionHint = document.getElementById('groupSelectionHint');
+    const importForm = document.querySelector('form[action="{{ route('import.store') }}"]');
+    const importSubmitBtn = document.getElementById('importSubmitBtn');
+    const importCancelLink = document.getElementById('importCancelLink');
+    const importProgressBox = document.getElementById('importProgressBox');
+    const importProgressText = document.getElementById('importProgressText');
 
     function refreshGroupHint() {
         const selectedCount = groupsSelect ? Array.from(groupsSelect.selectedOptions).length : 0;
@@ -129,5 +144,25 @@
     }
 
     groupsSelect?.addEventListener('change', refreshGroupHint);
+
+    importForm?.addEventListener('submit', function () {
+        if (importProgressBox) {
+            importProgressBox.classList.remove('hidden');
+        }
+
+        if (importSubmitBtn) {
+            importSubmitBtn.disabled = true;
+            importSubmitBtn.classList.add('opacity-60', 'cursor-not-allowed');
+            importSubmitBtn.textContent = 'Processing...';
+        }
+
+        if (importCancelLink) {
+            importCancelLink.classList.add('pointer-events-none', 'opacity-60');
+        }
+
+        if (importProgressText) {
+            importProgressText.textContent = 'Uploading ho rahi hai... processing in background, please wait.';
+        }
+    });
 </script>
 @endpush

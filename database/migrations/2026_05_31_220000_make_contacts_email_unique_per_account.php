@@ -17,6 +17,7 @@ return new class extends Migration
             $driver = DB::getDriverName();
 
             if ($driver === 'pgsql') {
+                DB::statement('ALTER TABLE contacts DROP CONSTRAINT IF EXISTS contacts_email_unique');
                 DB::statement('DROP INDEX IF EXISTS contacts_email_unique');
                 DB::statement('DROP INDEX IF EXISTS contacts_email_index');
             } elseif ($driver === 'sqlite') {

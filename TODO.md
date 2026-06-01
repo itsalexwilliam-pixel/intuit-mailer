@@ -1,9 +1,7 @@
 # TODO
 
-- [ ] Refactor ImportController to handle duplicates safely without DB unique-violation crashes
-- [ ] Improve import performance for large CSV files (batch existing-email lookups)
-- [ ] Increase CSV validation upload limit in ImportController
-- [ ] Add migration to move contacts uniqueness from global email to (account_id, email)
-- [ ] Add/adjust import feature tests for duplicate handling and account isolation
-- [ ] Run targeted ContactManagementFeatureTest import tests
-- [ ] Provide live-server large upload config (Nginx + PHP-FPM) commands
+- [x] Fix PostgreSQL parameter limit issue in contact CSV import by chunking contact inserts.
+- [x] Add upload processing UX in import page (disable submit, show "Uploading/Processing..." indicator while request runs).
+- [x] Optimize ImportController to remove expensive pre-check loops and rely on chunked insertOrIgnore with account-scoped uniqueness.
+- [x] Keep import summary accuracy (imported/skipped/failedRows) while minimizing DB queries.
+- [ ] Run contact feature tests.

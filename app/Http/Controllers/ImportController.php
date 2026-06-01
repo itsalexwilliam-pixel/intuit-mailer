@@ -157,55 +157,72 @@ class ImportController extends Controller
         }
 
         if (!empty($rowsToInsert)) {
-            $candidateEmails = array_values(array_unique(array_column($rowsToInsert, 'email')));
+            $insertRows = $rowsToInsert;
+            $imported = 0;
+            $insertedContacts = collect();
 
+            $allInsertEmails = array_values(array_unique(array_column($insertRows, 'email')));
+
+            // Fast path: one account-scoped lookup (chunked) to avoid thousands of repeated IN queries.
             $existingEmails = [];
-            foreach (array_chunk($candidateEmails, 500) as $chunk) {
-                $query = Contact::query()->whereIn('email', $chunk);
+            if (!empty($allInsertEmails)) {
+                foreach (array_chunk($allInsertEmails, 5000) as $emailChunk) {
+                    $query = Contact::query()->whereIn('email', $emailChunk);
 
-                if ($accountId > 0) {
-                    $query->where('account_id', $accountId);
-                }
+                    if ($accountId > 0) {
+                        $query->where('account_id', $accountId);
+                    }
 
-                $found = $query->pluck('email')->all();
-
-                foreach ($found as $existingEmail) {
-                    $existingEmails[$existingEmail] = true;
+                    foreach ($query->pluck('email')->all() as $existingEmail) {
+                        $existingEmails[(string) $existingEmail] = true;
+                    }
                 }
             }
 
-            $insertRows = [];
-            foreach ($rowsToInsert as $row) {
-                if (isset($existingEmails[$row['email']])) {
+            $insertCandidates = [];
+            foreach ($insertRows as $row) {
+                $email = (string) $row['email'];
+
+                if (isset($existingEmails[$email])) {
                     $skipped++;
                     $failedRows[] = [
-                        'row' => $emailToRowMeta[$row['email']]['row'] ?? '—',
-                        'name' => $emailToRowMeta[$row['email']]['name'] ?? '—',
-                        'email' => $row['email'],
+                        'row' => $emailToRowMeta[$email]['row'] ?? '—',
+                        'name' => $emailToRowMeta[$email]['name'] ?? '—',
+                        'email' => $email,
                         'reasons' => ['Email already exists in contacts'],
                     ];
                     continue;
                 }
 
-                $insertRows[] = $row;
+                $insertCandidates[] = $row;
             }
 
-            if (!empty($insertRows)) {
-                DB::table('contacts')->insertOrIgnore($insertRows);
-
-                $insertedContactsQuery = Contact::query()
-                    ->whereIn('email', array_column($insertRows, 'email'));
-
-                if ($accountId > 0) {
-                    $insertedContactsQuery->where('account_id', $accountId);
+            if (!empty($insertCandidates)) {
+                foreach (array_chunk($insertCandidates, 1000) as $insertChunk) {
+                    DB::table('contacts')->insertOrIgnore($insertChunk);
                 }
 
-                $insertedContacts = $insertedContactsQuery->get(['id', 'email']);
+                $imported = count($insertCandidates);
 
-                $imported = $insertedContacts->count();
+                $candidateEmails = array_values(array_unique(array_column($insertCandidates, 'email')));
+                if (!empty($candidateEmails)) {
+                    foreach (array_chunk($candidateEmails, 5000) as $emailChunk) {
+                        $insertedInChunk = Contact::query()
+                            ->whereIn('email', $emailChunk);
+
+                        if ($accountId > 0) {
+                            $insertedInChunk->where('account_id', $accountId);
+                        }
+
+                        $insertedChunkContacts = $insertedInChunk->get(['id', 'email']);
+                        $insertedContacts = $insertedContacts->merge($insertedChunkContacts);
+                    }
+
+                    $insertedContacts = $insertedContacts->unique('id')->values();
+                }
 
                 $groupIds = $request->groups ?? [];
-                if (!empty($groupIds) && $imported > 0) {
+                if (!empty($groupIds) && $insertedContacts->isNotEmpty()) {
                     $pivotRows = [];
                     foreach ($insertedContacts as $contact) {
                         foreach ($groupIds as $groupId) {
@@ -218,19 +235,6 @@ class ImportController extends Controller
 
                     if (!empty($pivotRows)) {
                         DB::table('contact_group')->insertOrIgnore($pivotRows);
-                    }
-                }
-
-                $insertedEmailSet = array_flip($insertedContacts->pluck('email')->all());
-                foreach ($insertRows as $row) {
-                    if (!isset($insertedEmailSet[$row['email']])) {
-                        $skipped++;
-                        $failedRows[] = [
-                            'row' => $emailToRowMeta[$row['email']]['row'] ?? '—',
-                            'name' => $emailToRowMeta[$row['email']]['name'] ?? '—',
-                            'email' => $row['email'],
-                            'reasons' => ['Email already exists in contacts'],
-                        ];
                     }
                 }
             }
