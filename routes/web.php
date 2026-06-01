@@ -114,8 +114,11 @@ Route::middleware('auth')->group(function () {
         Route::post('/campaigns/{campaign}/duplicate',   [CampaignController::class, 'duplicate'])->name('campaigns.duplicate');
 
         // Import
-        Route::get('/import',  [ImportController::class, 'index'])->name('import.index');
+        Route::get('/import', [ImportController::class, 'index'])->name('import.index');
         Route::post('/import', [ImportController::class, 'store'])->name('import.store');
+        Route::get('/import/runs/{importRun}/progress', [ImportController::class, 'progress'])->name('import.progress');
+        Route::get('/import/runs/{importRun}/status', [ImportController::class, 'status'])->name('import.status');
+        Route::get('/import/runs/{importRun}/result', [ImportController::class, 'result'])->name('import.result.run');
 
         // Templates
         Route::resource('templates', EmailTemplateController::class)->except(['show']);

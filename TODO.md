@@ -1,15 +1,7 @@
-# TODO
-
-- [x] Inspect existing reports routes/controller/views for integration points
-- [x] Implement SMTP report data query (summary + recipient-wise mapping + status buckets)
-- [x] Add SMTP report page route(s) and export route
-- [x] Build SMTP report blade with filters + export button + tables/cards
-- [x] Wire reports navigation tab for SMTP Report
-- [x] Add/adjust feature tests for SMTP report page and CSV export
-- [x] Run optimize clear and targeted tests
-
-- [ ] Implement Live Logs backend query in ReportsController
-- [ ] Add Live Logs route in routes/web.php
-- [ ] Build Live Logs blade with auto-refresh and filters
-- [ ] Add Live Logs tab in all report pages
-- [ ] Run targeted report tests + route verification
+- [ ] Create import_runs migration and model
+- [ ] Create ProcessImportJob for queued CSV processing with progress updates
+- [ ] Refactor ImportController to dispatch job and serve progress/status/result endpoints
+- [ ] Update routes for import progress/status/result
+- [ ] Update import index UI submit behavior
+- [ ] Create import progress page with polling progress bar
+- [ ] Run migrations and test queue-based import flow locally
