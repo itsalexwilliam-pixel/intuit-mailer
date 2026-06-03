@@ -20,7 +20,7 @@ return new class extends Migration
             $table->unsignedInteger('fail_count')->default(0);
             $table->timestamps();
 
-            $table->unique(['smtp_server_id', 'usage_date'], 'smtp_server_usages_unique_server_date');
+            $table->index(['smtp_server_id', 'usage_date'], 'smtp_server_usages_server_date_idx');
             $table->index(['account_id', 'usage_date'], 'smtp_server_usages_account_date_idx');
         });
     }

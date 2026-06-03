@@ -136,6 +136,8 @@
             <table class="w-full text-sm">
                 <thead>
                     <tr class="text-left text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                        <th class="py-2 pr-3">Queue ID</th>
+                        <th class="py-2 pr-3">Type</th>
                         <th class="py-2 pr-3">Recipient</th>
                         <th class="py-2 pr-3">SMTP</th>
                         <th class="py-2 pr-3">Campaign</th>
@@ -150,8 +152,10 @@
                 <tbody>
                     @forelse($recipientRows as $row)
                         <tr class="border-b border-slate-100 dark:border-slate-800/70">
+                            <td class="py-2 pr-3">{{ $row->id }}</td>
+                            <td class="py-2 pr-3">{{ $row->type ?? 'N/A' }}</td>
                             <td class="py-2 pr-3">{{ $row->email }}</td>
-                            <td class="py-2 pr-3">{{ $row->smtp_name ?? 'N/A' }}</td>
+                            <td class="py-2 pr-3">{{ $row->smtp_name ? $row->smtp_name . ' (#' . ($row->smtp_id ?? 'N/A') . ')' : 'N/A' }}</td>
                             <td class="py-2 pr-3">{{ $row->campaign_name ?? 'N/A' }}</td>
                             <td class="py-2 pr-3">{{ ucfirst($row->queue_status ?? 'unknown') }}</td>
                             <td class="py-2 pr-3">{{ $row->opened_id ? 'Yes' : 'No' }}</td>
@@ -161,7 +165,7 @@
                             <td class="py-2 pr-3">{{ $row->sent_at ?: $row->created_at }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="9" class="py-6 text-center text-slate-500">No recipient SMTP usage data found.</td></tr>
+                        <tr><td colspan="11" class="py-6 text-center text-slate-500">No recipient SMTP usage data found.</td></tr>
                     @endforelse
                 </tbody>
             </table>

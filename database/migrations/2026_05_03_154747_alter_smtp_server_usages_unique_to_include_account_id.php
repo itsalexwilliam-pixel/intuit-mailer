@@ -12,7 +12,6 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('smtp_server_usages', function (Blueprint $table) {
-            $table->dropUnique('smtp_server_usages_unique_server_date');
             $table->unique(
                 ['smtp_server_id', 'account_id', 'usage_date'],
                 'smtp_server_usages_unique_server_account_date'
@@ -27,7 +26,6 @@ return new class extends Migration
     {
         Schema::table('smtp_server_usages', function (Blueprint $table) {
             $table->dropUnique('smtp_server_usages_unique_server_account_date');
-            $table->unique(['smtp_server_id', 'usage_date'], 'smtp_server_usages_unique_server_date');
         });
     }
 };

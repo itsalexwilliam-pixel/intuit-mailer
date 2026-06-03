@@ -1,7 +1,10 @@
-- [ ] Create import_runs migration and model
-- [ ] Create ProcessImportJob for queued CSV processing with progress updates
-- [ ] Refactor ImportController to dispatch job and serve progress/status/result endpoints
-- [ ] Update routes for import progress/status/result
-- [ ] Update import index UI submit behavior
-- [ ] Create import progress page with polling progress bar
-- [ ] Run migrations and test queue-based import flow locally
+- [ ] Remove SMTP gap-time sleep from campaign queue sender; keep only campaign emails-per-minute throttling.
+- [ ] Persist smtp_server_id on every campaign send attempt/success/failure in queue worker logs.
+- [ ] Add structured SMTP send logging context (queue, recipient, campaign, smtp, status) in campaign queue worker.
+- [ ] Log SMTP test-email sends into email_queue as type smtp_test with smtp mapping and status/error.
+- [ ] Extend reports controller: add live-logs export type and richer SMTP export details (queue/type/smtp/campaign/attempts/timestamps).
+- [ ] Extend live logs query data to include email type and smtp id for UI/reporting clarity.
+- [ ] Update Live Logs UI with Export button and Type column.
+- [ ] Update SMTP report UI recipient table with Queue ID and Type columns for detailed auditability.
+- [ ] Run PHP lint checks on edited PHP files.
+- [ ] Mark completed tasks in TODO.md and summarize changes.

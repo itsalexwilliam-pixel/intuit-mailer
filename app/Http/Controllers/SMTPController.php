@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\EmailQueue;
 use App\Models\SmtpServer;
 use App\Models\SmtpServerUsage;
 use Carbon\Carbon;
@@ -171,6 +172,26 @@ class SMTPController extends Controller
             'test_email' => ['required', 'email'],
         ]);
 
+        $accountId = (int) $smtp->account_id;
+
+        $queueItem = EmailQueue::create([
+            'account_id' => $accountId,
+            'campaign_id' => null,
+            'contact_id' => null,
+            'smtp_server_id' => (int) $smtp->id,
+            'email' => $data['test_email'],
+            'type' => 'smtp_test',
+            'subject' => 'Test Email - SMTP Configuration',
+            'body' => "This is a test email from SMTP server: {$smtp->name}",
+            'body_snapshot' => "This is a test email from SMTP server: {$smtp->name}",
+            'from_email' => $smtp->from_email,
+            'from_name' => $smtp->from_name,
+            'status' => 'pending',
+            'attempts' => 0,
+            'last_error' => null,
+            'sent_at' => null,
+        ]);
+
         try {
             $this->applySmtpConfig($smtp);
 
@@ -184,9 +205,28 @@ class SMTPController extends Controller
                 }
             });
 
+            $queueItem->update([
+                'status' => 'sent',
+                'sent_at' => now(),
+                'last_error' => null,
+            ]);
+
+            $smtp->update(['last_used_at' => now()]);
+            $this->incrementUsage((int) $smtp->id, $accountId, true);
+
             return back()->with('success', "Test email sent successfully via {$smtp->name}.");
         } catch (\Throwable $e) {
+            $queueItem->update([
+                'status' => 'failed',
+                'attempts' => ((int) $queueItem->attempts) + 1,
+                'last_error' => $e->getMessage(),
+            ]);
+
+            $smtp->update(['last_used_at' => now()]);
+            $this->incrementUsage((int) $smtp->id, $accountId, false);
+
             Log::warning('SMTP send test email failed', [
+                'queue_id' => $queueItem->id,
                 'smtp_id' => $smtp->id,
                 'account_id' => $smtp->account_id,
                 'error_type' => class_basename($e),
@@ -196,6 +236,38 @@ class SMTPController extends Controller
             return back()->withErrors([
                 'smtp_test_email' => "Failed to send test email via {$smtp->name}: " . $e->getMessage(),
             ]);
+        }
+    }
+
+    private function incrementUsage(int $smtpServerId, int $accountId, bool $success): void
+    {
+        $today = Carbon::today()->toDateString();
+
+        $usage = SmtpServerUsage::query()
+            ->where('smtp_server_id', $smtpServerId)
+            ->whereDate('usage_date', $today)
+            ->lockForUpdate()
+            ->first();
+
+        if (!$usage) {
+            $usage = SmtpServerUsage::query()->create([
+                'smtp_server_id' => $smtpServerId,
+                'usage_date' => $today,
+                'account_id' => $accountId,
+                'sent_count' => 0,
+                'fail_count' => 0,
+            ]);
+        }
+
+        if ((int) $usage->account_id !== $accountId) {
+            $usage->account_id = $accountId;
+            $usage->save();
+        }
+
+        if ($success) {
+            $usage->increment('sent_count');
+        } else {
+            $usage->increment('fail_count');
         }
     }
 

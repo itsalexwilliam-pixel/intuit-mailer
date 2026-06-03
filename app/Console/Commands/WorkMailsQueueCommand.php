@@ -307,6 +307,7 @@ class WorkMailsQueueCommand extends Command
         $sent = false;
         $lastError = null;
         $today = Carbon::today()->toDateString();
+        $lastTriedSmtpId = null;
 
         foreach ($rotationOrderedServers as $smtp) {
             if (!is_null($smtp->daily_limit)) {
@@ -320,6 +321,12 @@ class WorkMailsQueueCommand extends Command
                     continue;
                 }
             }
+
+            $lastTriedSmtpId = (int) $smtp->id;
+
+            $item->update([
+                'smtp_server_id' => $lastTriedSmtpId,
+            ]);
 
             $this->line("Using SMTP #{$smtp->id} {$smtp->host}:{$smtp->port}");
 
@@ -340,6 +347,7 @@ class WorkMailsQueueCommand extends Command
                 Mail::to($item->email)->send(new CampaignMail($item->campaign, $item->contact, $item->id, $item->ab_variant));
 
                 $item->update([
+                    'smtp_server_id' => (int) $smtp->id,
                     'status' => 'sent',
                     'sent_at' => Carbon::now(),
                     'last_error' => null,
@@ -373,12 +381,9 @@ class WorkMailsQueueCommand extends Command
                 $this->advanceRoundRobinPointer($accountId, (int) $smtp->id);
 
                 $this->info("Sent successfully: {$item->email}");
+                $this->line("SMTP_SEND_SUCCESS queue_id={$item->id} campaign_id={$item->campaign_id} recipient={$item->email} smtp_id={$smtp->id} smtp_name={$smtp->name}");
+
                 $sent = true;
-
-                // Per-campaign pacing: use configured gap (seconds), fallback to 10 seconds
-                $gapSeconds = max(1, (int) ($item->campaign?->email_gap_seconds ?? 10));
-                sleep($gapSeconds);
-
                 break;
             } catch (\Throwable $e) {
                 $lastError = $e->getMessage();
@@ -408,12 +413,14 @@ class WorkMailsQueueCommand extends Command
                 $usage->increment('fail_count');
 
                 $this->warn("SMTP #{$smtp->id} failed for {$item->email}: {$lastError}");
+                $this->line("SMTP_SEND_FAILED queue_id={$item->id} campaign_id={$item->campaign_id} recipient={$item->email} smtp_id={$smtp->id} smtp_name={$smtp->name} error=" . str_replace(["\r", "\n"], ' ', (string) $lastError));
             }
         }
 
         if (!$sent) {
             $attempts = $item->attempts + 1;
             $item->update([
+                'smtp_server_id' => $lastTriedSmtpId,
                 'attempts' => $attempts,
                 'status' => 'failed',
                 'last_error' => $lastError ?? 'All SMTP servers failed',

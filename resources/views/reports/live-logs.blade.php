@@ -88,6 +88,10 @@
         <div class="mt-3 flex flex-wrap gap-2">
             <button type="submit" class="inline-flex items-center rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-4 py-2">Apply</button>
             <a href="{{ route('reports.live-logs') }}" class="inline-flex items-center rounded-lg border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm px-4 py-2">Reset</a>
+            <a href="{{ route('reports.export', array_filter(['type' => 'live-logs', 'date_range' => $filters['date_range'] ?? '7d', 'from' => $filters['from'] ?? null, 'to' => $filters['to'] ?? null, 'status' => $filters['status'] ?? null, 'campaign_id' => $filters['campaign_id'] ?? null, 'smtp_id' => $filters['smtp_id'] ?? null, 'recipient' => $filters['recipient'] ?? null])) }}"
+               class="inline-flex items-center rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-900/30 text-sm px-4 py-2">
+                Export Live Logs
+            </a>
             <button type="button" id="toggle-refresh" class="inline-flex items-center rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-900/30 text-sm px-4 py-2">
                 Auto Refresh: ON (10s)
             </button>
@@ -109,6 +113,7 @@
                     <tr class="text-left text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                         <th class="py-2 pr-3">Time</th>
                         <th class="py-2 pr-3">Recipient</th>
+                        <th class="py-2 pr-3">Type</th>
                         <th class="py-2 pr-3">Subject</th>
                         <th class="py-2 pr-3">Campaign</th>
                         <th class="py-2 pr-3">SMTP</th>
@@ -121,9 +126,10 @@
                         <tr class="border-b border-slate-100 dark:border-slate-800/70">
                             <td class="py-2 pr-3">{{ $log->sent_at ?: $log->created_at }}</td>
                             <td class="py-2 pr-3">{{ $log->email }}</td>
+                            <td class="py-2 pr-3">{{ $log->type ?: 'N/A' }}</td>
                             <td class="py-2 pr-3 max-w-[260px] truncate" title="{{ $log->subject }}">{{ $log->subject ?: '—' }}</td>
                             <td class="py-2 pr-3">{{ $log->campaign_name ?: 'N/A' }}</td>
-                            <td class="py-2 pr-3">{{ $log->smtp_name ? $log->smtp_name . ' (' . $log->smtp_host . ')' : 'N/A' }}</td>
+                            <td class="py-2 pr-3">{{ $log->smtp_name ? $log->smtp_name . ' (#' . ($log->smtp_server_id ?? 'N/A') . ') (' . $log->smtp_host . ')' : 'N/A' }}</td>
                             <td class="py-2 pr-3">
                                 @if($log->status === 'sent')
                                     <span class="inline-flex px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">Sent</span>
@@ -138,7 +144,7 @@
                             <td class="py-2 pr-3 max-w-[340px] truncate" title="{{ $log->last_error }}">{{ $log->last_error ?: '—' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="7" class="py-6 text-center text-slate-500">No logs found for selected filters.</td></tr>
+                        <tr><td colspan="8" class="py-6 text-center text-slate-500">No logs found for selected filters.</td></tr>
                     @endforelse
                 </tbody>
             </table>
