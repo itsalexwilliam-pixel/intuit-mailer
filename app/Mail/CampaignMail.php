@@ -49,13 +49,22 @@ class CampaignMail extends Mailable
     {
         $unsubscribeUrl = route('unsubscribe', ['email' => rawurlencode($this->contact->email)]);
 
+        // Build plain text here so it can be passed into the Symfony closure.
+        // This avoids using the textString named parameter which was only added
+        // in later Laravel releases and is not available on all servers.
+        $plainText = $this->computePlainText();
+
         return new Envelope(
             subject: $this->replaceMergeTags($this->effectiveSubject(), $this->contact),
             using: [
-                function (\Symfony\Component\Mime\Email $email) use ($unsubscribeUrl) {
+                function (\Symfony\Component\Mime\Email $email) use ($unsubscribeUrl, $plainText) {
                     $email->getHeaders()
                         ->addTextHeader('List-Unsubscribe', '<' . $unsubscribeUrl . '>')
                         ->addTextHeader('List-Unsubscribe-Post', 'List-Unsubscribe=One-Click');
+
+                    // Attach plain-text alternative directly via Symfony Email API.
+                    // Compatible with all Laravel / Symfony Mailer versions.
+                    $email->text($plainText);
                 },
             ]
         );
@@ -75,13 +84,19 @@ class CampaignMail extends Mailable
             $this->contact->email
         );
 
-        // Plain-text alternative: strip HTML tags from the body
-        $plainText = $this->buildPlainText($body);
-
         return new Content(
             htmlString: $trackedHtml,
-            textString: $plainText,
         );
+    }
+
+    /**
+     * Build the plain-text alternative body.
+     * Called from envelope() so the result can be injected via Symfony's API.
+     */
+    private function computePlainText(): string
+    {
+        $body = $this->replaceMergeTags($this->effectiveBody(), $this->contact);
+        return $this->buildPlainText($body);
     }
 
     private function buildPlainText(string $html): string
