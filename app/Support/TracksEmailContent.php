@@ -20,8 +20,8 @@ trait TracksEmailContent
 
         if ($includeUnsubscribe && !empty($unsubscribeEmail)) {
             $unsubscribeUrl = route('unsubscribe', ['email' => rawurlencode($unsubscribeEmail)]);
-            $appName = config('app.name', 'Intuit Inc.');
-            $companyAddress = '2700 Coast Avenue, Mountain View, California 94043, United States';
+            $appName = config('app.name', 'Mailer');
+            $companyAddress = config('app.company_address', '1234 Your Street, Your City, Your State, United States');
 
             $unsubscribeHtml = '
 <div style="margin-top:32px;padding-top:24px;border-top:1px solid #e5e7eb;text-align:center;font-family:Arial,Helvetica,sans-serif;">

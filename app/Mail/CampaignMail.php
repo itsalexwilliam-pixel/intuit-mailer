@@ -68,14 +68,55 @@ class CampaignMail extends Mailable
         $normalizedHtml = $this->normalizeForEmailClient($processedBody);
         $inlineReadyHtml = $this->inlineCssForEmailClients($normalizedHtml);
 
-        return new Content(
-            htmlString: $this->buildTrackedHtml(
-                $inlineReadyHtml,
-                $this->queueId,
-                true,
-                $this->contact->email
-            )
+        $trackedHtml = $this->buildTrackedHtml(
+            $inlineReadyHtml,
+            $this->queueId,
+            true,
+            $this->contact->email
         );
+
+        // Plain-text alternative: strip HTML tags from the body
+        $plainText = $this->buildPlainText($body);
+
+        return new Content(
+            htmlString: $trackedHtml,
+            text: $plainText,
+        );
+    }
+
+    private function buildPlainText(string $html): string
+    {
+        // Replace block-level tags with newlines before stripping
+        $text = preg_replace('/<br\s*\/?>/i', "\n", $html) ?? $html;
+        $text = preg_replace('/<\/p>/i', "\n\n", $text) ?? $text;
+        $text = preg_replace('/<\/div>/i', "\n", $text) ?? $text;
+        $text = preg_replace('/<\/h[1-6]>/i', "\n\n", $text) ?? $text;
+        $text = preg_replace('/<\/li>/i', "\n", $text) ?? $text;
+
+        // Replace anchor tags with "text (URL)" format
+        $text = preg_replace('/<a[^>]+href=["\']([^"\']+)["\'][^>]*>(.*?)<\/a>/is', '$2 ($1)', $text) ?? $text;
+
+        // Strip all remaining HTML tags
+        $text = strip_tags($text);
+
+        // Decode HTML entities
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        // Collapse excessive blank lines (max 2 consecutive)
+        $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+
+        // Add unsubscribe footer
+        $unsubscribeUrl = route('unsubscribe', ['email' => rawurlencode($this->contact->email)]);
+        $appName = config('app.name', 'Mailer');
+        $companyAddress = config('app.company_address', '');
+
+        $text .= "\n\n---\n";
+        $text .= "To unsubscribe, visit: {$unsubscribeUrl}\n";
+        if ($companyAddress) {
+            $text .= "{$appName}, {$companyAddress}\n";
+        }
+
+        return trim($text);
     }
 
     private function replaceMergeTags(string $body, Contact $contact): string
