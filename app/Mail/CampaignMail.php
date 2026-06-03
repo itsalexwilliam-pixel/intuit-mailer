@@ -80,7 +80,7 @@ class CampaignMail extends Mailable
 
         return new Content(
             htmlString: $trackedHtml,
-            text: $plainText,
+            textString: $plainText,
         );
     }
 
